@@ -11,6 +11,10 @@ import readchar
 CHUNK = 1024 * 2
 MAX_CHANNEL = 10
 
+MIX_FIXED = 0
+MIX_LINER = 1
+MIX_SQRT = 2
+
 # 設定内容
 ACTIVE = []
 FILENAMES = []
@@ -18,6 +22,7 @@ SKIP = []
 TITLE = []
 LEN = 0
 ALLFIN = False
+MIX = MIX_SQRT
 
 
 def readConf(conffile):
@@ -26,6 +31,7 @@ def readConf(conffile):
     global SKIP
     global TITLE
     global LEN
+    global MIX
 
     conf = open(conffile, 'rb')
     count = 0
@@ -48,6 +54,13 @@ def readConf(conffile):
             SKIP.append(int(lines[3]))
             ACTIVE.append(1)
             print "[%d] %s" % (count % MAX_CHANNEL, lines[1])
+        elif (lines[0] == 'mix'):
+            if (lines[1] == 'fix'):
+                MIX = MIX_FIXED
+            elif (lines[1] == 'liner'):
+                MIX = MIX_LINER
+            elif (lines[1] == 'sqrt'):
+                MIX = MIX_SQRT
         else:
             continue
 
@@ -64,6 +77,7 @@ def playSound():
     global TITLE
     global LEN
     global ALLFIN
+    global MIX
 
     wf = []
     smpwidth = 0
@@ -99,7 +113,7 @@ def playSound():
 
         # 音声合成
         act = ACTIVE[:]  # 配列全コピー
-        # actSum = sum(act)
+        actSum = sum(act)
         for i in range(LEN):
             data = wf[i].readframes(CHUNK)
             if (data == ''):
@@ -112,16 +126,26 @@ def playSound():
                 idata = data64
             else:
                 # 一ファイル終了したら全ファイル終了．
-                # TODO: どれか1ファイルアクティブだったら調整．
+                # TODO: どれか1ファイルでもアクティブだったら調整．
                 if (dlen != len(data)):
                     fin = True
                     break
                 idata += data64
         if (fin is True):
             break
-        # if (actSum != 0):
-        #     idata = idata / actSum
-        idata = idata / LEN
+        if (MIX == MIX_LINER):
+            if (actSum != 0):
+                idata = idata / actSum
+        elif (MIX == MIX_SQRT):
+            if (actSum != 0):
+                if (actSum == LEN):
+                    idata = idata / LEN
+                else:
+                    idata = idata / (numpy.sqrt(actSum) * numpy.sqrt(LEN))
+        elif (MIX == MIX_FIXED):
+            idata = idata / LEN
+        else:  # DEFAULT
+            idata = idata / LEN
         idata = idata.astype("int16")
         bdata = idata.tobytes()
         stream.write(bdata)
@@ -198,3 +222,6 @@ if __name__ == "__main__":
     keyThread = threading.Thread(target=keyCheck)
     soundThread.start()
     keyThread.start()
+    soundThread.join()
+    keyThread.join()
+    print ""
